@@ -1,6 +1,10 @@
+from urllib import request
 import requests
-from secrets import ACCESS_TOKEN, USER_ID, DISCOVER_WEEKLY_PLAYLIST_ID
+from secrets import USER_ID, ACCESS_TOKEN, DISCOVER_WEEKLY_PLAYLIST_ID
 from datetime import date
+from twilio.rest import Client
+
+
 
 class SaveSongs:
 
@@ -9,6 +13,8 @@ class SaveSongs:
         self.access_token = ACCESS_TOKEN
         self.playlist_id = DISCOVER_WEEKLY_PLAYLIST_ID
         self.tracks = ""
+        self.in_weekly = {}
+        self.date_today = date.today().strftime("%b %d")
 
 
 
@@ -18,7 +24,7 @@ class SaveSongs:
 
         # get items of discover weekly playlist
         response = requests.get(
-            SPOTIFY_URL+'fields=items(track(uri%2Cartist%2Cname))',
+            SPOTIFY_URL+'fields=items(track(id%2Curi%2Cartist%2Cname))',
             headers={
             "Accept": "application/json",
              "Content-Type": "application/json",
@@ -26,6 +32,11 @@ class SaveSongs:
             }
         )
         discovered = response.json()
+
+        # songs in your discover weekly
+        self.in_weekly = discovered
+
+       
         
              # save the spotify uris to a array
              # for item in discovered['items']:
@@ -40,9 +51,9 @@ class SaveSongs:
 
         
 
+
     def create_playlist(self):
         query = f'https://api.spotify.com/v1/users/{USER_ID}/playlists'
-        date_today = date.today().strftime("%b %d")
 
         response_playlist = requests.post(
             query,
@@ -52,7 +63,7 @@ class SaveSongs:
                 "Authorization": f"Bearer {ACCESS_TOKEN}"
             },
             json={
-              "name":  "Discover Weekly Playlist " + date_today,
+              "name":  "Discover Weekly Playlist - " + self.date_today,
               "description": "Your Discover Weekly Playlist before it's gone forever and ever",
               "public": False
             } 
@@ -62,6 +73,59 @@ class SaveSongs:
         
     
         return response_playlist['id']
+
+    
+    def  find_top_track(self):
+        discover_ids = ""
+
+        # get ids of all tracks
+        for item in self.in_weekly['items']:
+            discover_ids += (item["track"]["id"] + ",")
+        discover_ids = discover_ids[:-1]
+    
+        # get several tracks 
+        query = "https://api.spotify.com/v1/tracks?"
+        response = requests.get(
+            query + "market=US&" + "ids=" + discover_ids,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {ACCESS_TOKEN}"
+            }
+        )
+        responses = response.json()
+
+        # responses = responses['tracks']['popularity']
+        responses = responses['tracks']
+
+        popularity = []
+       # compare popularity values
+        for it in responses:
+            popularity.append(it['popularity'])
+        max_pop_val = max(popularity)
+
+        # index of most popular song
+        max_index = popularity.index(max_pop_val)
+
+        popular_song_name = responses[max_index]["name"]
+        return popular_song_name
+
+
+    def send_message(self):
+
+
+        most_pop_track = self.find_top_track()
+    
+        client = Client("AC7fab959d573161273f3cd2a4db93ce01","f62f53eb09f8d6623b560de23c1853eb")
+        my_msg = client.messages.create(
+            to="+17789037209",
+            from_="+17432008422",
+            body= "Your " + self.date_today + " Discover Weekly Playlist has been saved! This weeks most popular track is: \n\n"+ most_pop_track 
+            + ".\n\nHappy listening :)",
+            )
+        print(my_msg.body) 
+
+
 
 
 
@@ -83,19 +147,10 @@ class SaveSongs:
                 "Authorization": f"Bearer {ACCESS_TOKEN}"
             }
         )
- 
+        self.send_message()
+    
+
+
 
 CreateYourWeekly = SaveSongs()
 CreateYourWeekly.find_songs()
-
-
-
-
-
-
-
-
-
-
-
-
